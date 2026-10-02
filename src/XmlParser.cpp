@@ -285,7 +285,7 @@ std::string unescapeString(const char* str, size_t len)
         }
         size_t sequenceLen = sequenceEnd - i;
         for (const char **j = _escapeStrings, **end = _escapeStrings + sizeof(_escapeStrings) / sizeof(*_escapeStrings); j < end; ++j)
-            if (strncmp(i, *j, sequenceLen) == 0)
+            if (strlen(*j) == sequenceLen && strncmp(i, *j, sequenceLen) == 0)
             {
                 result.push_back(_escapeChars[j - _escapeStrings]);
                 i = sequenceEnd + 1;
@@ -296,7 +296,9 @@ std::string unescapeString(const char* str, size_t len)
     }
 }
 
-std::string stripComments(const char* str, size_t len)
+// Element text as the document means it: comments removed, entity and
+// character references decoded, and CDATA content kept as written.
+std::string decodeText(const char* str, size_t len)
 {
     std::string result;
     result.reserve(len);
@@ -305,9 +307,9 @@ std::string stripComments(const char* str, size_t len)
         size_t remainingLen = end - i;
         const char* next = (const char*)memchr(i, '<', remainingLen);
         if (!next)
-            return result.append(i, remainingLen);
+            return result.append(unescapeString(i, remainingLen));
         else
-            result.append(i, next - i);
+            result.append(unescapeString(i, next - i));
         i = next;
         if (strncmp(i + 1, "![CDATA[", 8) == 0)
         {
@@ -596,7 +598,7 @@ void parseElement(Context& context, xsdcpp::ElementContext& parentElementContext
                 skipText(context.pos);
             if (context.pos.pos != start && elementContext.info->addText)
             {
-                std::string text = stripComments(start, context.pos.pos - start);
+                std::string text = decodeText(start, context.pos.pos - start);
                 elementContext.info->addText(elementContext.element, context.pos, std::move(text));
             }
         }
