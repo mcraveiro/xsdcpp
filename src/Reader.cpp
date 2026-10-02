@@ -1392,25 +1392,30 @@ private:
 
     bool process(List<Xsd::ElementRef>& elements)
     {
-        // First pass: collect group definitions and substitution group members
+        // First pass, part a: collect group definitions across every file,
+        // in every namespace, before resolving any element that might
+        // reference them. Group definitions can live in files scanned after
+        // the file whose element references them (e.g. a substitutionGroup
+        // element in input.xsd referencing a group defined in a later
+        // xs:include such as instruments.xsd), so all files must be fully
+        // scanned for group defs before any group reference is resolved.
         for (HashMap<String, NamespaceData>::Iterator i = _namespaces.begin(), end = _namespaces.end(); i != end; ++i)
         {
             NamespaceData& namespaceData = *i;
-            for (HashMap<String, XsdFileData>::Iterator i = namespaceData.files.begin(), end = namespaceData.files.end(); i != end; ++i)
+            for (HashMap<String, XsdFileData>::Iterator fileIt = namespaceData.files.begin(), fileEnd = namespaceData.files.end(); fileIt != fileEnd; ++fileIt)
             {
-                const XsdFileData& xsdFileData = *i;
+                const XsdFileData& xsdFileData = *fileIt;
                 Position position;
                 position.element = &xsdFileData.xsd;
                 position.xsdFileData = &xsdFileData;
 
-                for (List<Xml::Variant>::Iterator i = position.element->content.begin(), end = position.element->content.end(); i != end; ++i)
+                for (List<Xml::Variant>::Iterator childIt = position.element->content.begin(), childEnd = position.element->content.end(); childIt != childEnd; ++childIt)
                 {
-                    const Xml::Variant& variant = *i;
+                    const Xml::Variant& variant = *childIt;
                     if (!variant.isElement())
                         continue;
                     const Xml::Element& element = variant.toElement();
 
-                    // Collect group definitions
                     if (compareXsName(position, element.type, "group"))
                     {
                         String name = getXmlAttribute(element, "name");
@@ -1425,8 +1430,31 @@ private:
                             groupDef.position.xsdFileData = &xsdFileData;
                         }
                     }
-                    // Process elements with substitutionGroup to register them
-                    else if (compareXsName(position, element.type, "element"))
+                }
+            }
+        }
+
+        // First pass, part b: process elements with substitutionGroup to
+        // register them, now that group definitions from every file are
+        // available.
+        for (HashMap<String, NamespaceData>::Iterator i = _namespaces.begin(), end = _namespaces.end(); i != end; ++i)
+        {
+            NamespaceData& namespaceData = *i;
+            for (HashMap<String, XsdFileData>::Iterator fileIt = namespaceData.files.begin(), fileEnd = namespaceData.files.end(); fileIt != fileEnd; ++fileIt)
+            {
+                const XsdFileData& xsdFileData = *fileIt;
+                Position position;
+                position.element = &xsdFileData.xsd;
+                position.xsdFileData = &xsdFileData;
+
+                for (List<Xml::Variant>::Iterator childIt = position.element->content.begin(), childEnd = position.element->content.end(); childIt != childEnd; ++childIt)
+                {
+                    const Xml::Variant& variant = *childIt;
+                    if (!variant.isElement())
+                        continue;
+                    const Xml::Element& element = variant.toElement();
+
+                    if (compareXsName(position, element.type, "element"))
                     {
                         String substitutionGroupAttr = getXmlAttribute(element, "substitutionGroup");
                         if (!substitutionGroupAttr.isEmpty())
